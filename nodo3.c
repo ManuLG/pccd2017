@@ -5,8 +5,8 @@
 #include <stdlib.h>
 
 #define N 3 // Número de nodos
-#define PRIORIDAD 1
-#define ID_NODO 1
+#define PRIORIDAD 3
+#define ID_NODO 3
 
 #define REPLY -1
 #define REQUEST 1
@@ -15,21 +15,22 @@ typedef struct mensaje {
       long      mtype;    // Necesario para filtrar el mensaje a recibir
       int prioridad;
       int id_nodo;
-    } mensaje;
+} mensaje;
 
-    int mi_id = 1;
-    int mi_ticket = 0;
-    int id_nodos[N-1] = {2, 3};
-    int id_nodos_pend[N-1];
-    int num_pend = 0;
-    int quiero = 1;
-    int max_ticket = 0;
+int mi_id = 3;
+int mi_ticket = 3;
+int id_nodos[N-1] = {1, 2};
+int id_nodos_pend[N-1];
+int num_pend = 0;
+int quiero = 0;
+int max_ticket = 0;
 
-    int id_cola = 0;
+int id_cola = 0;
 
 // Prototipos de las funciones
-    int sendMsg();
-    mensaje receiveMsg();
+int sendMsg();
+mensaje receiveMsg();
+void procesoReceptor();
 
 int main(){
 
@@ -38,21 +39,7 @@ int main(){
 
   printf("ID de la cola: %i\n", id_cola);
 
-  while (quiero) {
-
-    for (int i = 0; i < N -1; i++) { sendMsg(REQUEST, id_nodos[i]); }
-    for (int i = 0; i < N -1; i++) { receiveMsg(); }
-
-    // ------ Inicio sección crítica ----------------
-    printf("ENTRO EN LA SECCION CRITICA\n");
-    // --------- Fin sección crítica ----------------
-    quiero = 0;
-
-    for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
-
-    num_pend = 0;
-
-    } // Cierre while 
+  while (1) { procesoReceptor(); }
 } // Cierre main
 
 void procesoReceptor() {
@@ -62,7 +49,7 @@ void procesoReceptor() {
 
   id_nodo_origen = msg.id_nodo;
   ticket_origen = msg.prioridad;
-  
+
   if ((quiero != 1) || (ticket_origen < mi_ticket) || ((ticket_origen == mi_ticket && (id_nodo_origen < mi_id)))) {
     sendMsg(id_nodo_origen);
   } else {
@@ -83,7 +70,7 @@ int sendMsg(int tipo, int id_destino) {
   msg.mtype = id_destino; // ¿Destinatario?
 
   return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
-} // Cierre sendMsg
+} // Cierre sendMsg()
 
 // receive()
 mensaje receiveMsg() {
