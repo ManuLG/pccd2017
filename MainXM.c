@@ -27,6 +27,7 @@ typedef struct mensaje {
     int id_nodos_pend[N-1];
     int num_pend = 0;
     int quiero = 1;
+    int sc=0;
     int max_ticket = 0;
 
     int id_cola = 0;
@@ -61,10 +62,14 @@ int main(int argc, char const *argv[]) {
 
     for (int i = 0; i < N -1; i++) { sendMsg(REQUEST, id_nodos[i]); }
     for (int i = 0; i < N -1; i++) { receiveMsg(id_cola_ack); }
-    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
+
+      sc=1;
     // ------ Inicio sección crítica ----------------
     printf("ENTRO EN LA SECCION CRITICA\n");
+    getchar();
     // --------- Fin sección crítica ----------------
+    sc=0;
     quiero = 0;
     printf("num_pend: %i\n",num_pend );
     for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
@@ -86,7 +91,8 @@ void *procesoReceptor()
     ticket_origen = msg.prioridad;
     mi_ticket = mi_prioridad;
 
-    if ((quiero != 1) || (ticket_origen < mi_ticket) || ((ticket_origen == mi_ticket && (id_nodo_origen < mi_id)))) {
+    if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) ) 
+    {
       printf("procesoReceptor\n" );
       sendMsg(REPLY,id_nodo_origen);
     } else {
