@@ -4,8 +4,9 @@
 #include <stdio.h> //Prints
 #include <stdlib.h>
 #include <unistd.h> // Fork
+#include <pthread.h> //threads
 
-void procesoReceptor();
+void *procesoReceptor();
 void crearVector();
 
 #define N 3 // Número de nodos
@@ -44,18 +45,17 @@ int main(int argc, char const *argv[]) {
   key_t key_2 = ftok("/tmp", 1234);
   id_cola = msgget(key, 0777 | IPC_CREAT);
   id_cola_ack = msgget(key_2, 0777 | IPC_CREAT);
+  pthread_t hiloR;
 
   crearVector();
   printf("ID de la cola: %i\n", id_cola);
 
-  // Hacer un fork para el proceso receptor
-  int pid=fork();
-  if(pid==0)
-  {
-    while(1)procesoReceptor();
-  }
+  // Hacer un thread para el proceso receptor
+  pthread_create(&hiloR,NULL,procesoReceptor,"");
 
-  // Hacer un fork para el proceso que crea los hijos?
+
+
+  // Hacer un thread para el proceso que crea los hijos?
 
   while (quiero) {
 
@@ -66,7 +66,7 @@ int main(int argc, char const *argv[]) {
     printf("ENTRO EN LA SECCION CRITICA\n");
     // --------- Fin sección crítica ----------------
     quiero = 0;
-
+    printf("num_pend: %i\n",num_pend );
     for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
 
     num_pend = 0;
@@ -74,20 +74,27 @@ int main(int argc, char const *argv[]) {
     } // Cierre while
 } // Cierre main
 
-void procesoReceptor() {
-  int id_nodo_origen, ticket_origen;
+void *procesoReceptor()
+{
+  while(1)
+  {
+    int id_nodo_origen, ticket_origen;
 
-  mensaje msg = receiveMsg(id_cola);
+    mensaje msg = receiveMsg(id_cola);
 
-  id_nodo_origen = msg.id_nodo;
-  ticket_origen = msg.prioridad;
-  mi_ticket = mi_prioridad;
+    id_nodo_origen = msg.id_nodo;
+    ticket_origen = msg.prioridad;
+    mi_ticket = mi_prioridad;
 
-  if ((quiero != 1) || (ticket_origen < mi_ticket) || ((ticket_origen == mi_ticket && (id_nodo_origen < mi_id)))) {
-    sendMsg(id_nodo_origen);
-  } else {
-    id_nodos_pend[num_pend++] = id_nodo_origen;
+    if ((quiero != 1) || (ticket_origen < mi_ticket) || ((ticket_origen == mi_ticket && (id_nodo_origen < mi_id)))) {
+      printf("procesoReceptor\n" );
+      sendMsg(REPLY,id_nodo_origen);
+    } else {
+      printf("Añadido pendiente\n" );
+      id_nodos_pend[num_pend++] = id_nodo_origen;
+    }
   }
+  pthread_exit(NULL);
 } // Cierre procesoReceptor()
 
 int sendMsg(int tipo, int id_destino) {
@@ -97,10 +104,11 @@ int sendMsg(int tipo, int id_destino) {
 
   if (tipo == REPLY)
   {
+    printf("Sending reply\n");
     msg.prioridad = REPLY;
     return msgsnd (id_cola_ack, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
   }
-
+  printf("Sending request\n");
   msg.prioridad = mi_prioridad;
 
   return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
@@ -112,7 +120,7 @@ mensaje receiveMsg(int id_cola) {
   mensaje msg;
   int res = msgrcv (id_cola, (struct msgbuf *)&msg, sizeof(msg), mi_id, 0);
 
-  printf ("Recibo desde: %i\n", msg.id_nodo);
+  printf ("Recibo desde: %i y la cola es %i\n", msg.id_nodo,id_cola);
 
   return msg;
 } // Cierre receiveMsg()
