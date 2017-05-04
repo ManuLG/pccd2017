@@ -3,10 +3,9 @@
 #include <sys/msg.h>
 #include <stdio.h> //Prints
 #include <stdlib.h>
+#include <unistd.h> // Fork
 
 #define N 3 // Número de nodos
-#define PRIORIDAD 1
-#define ID_NODO 1
 
 #define REPLY -1
 #define REQUEST 1
@@ -18,6 +17,7 @@ typedef struct mensaje {
     } mensaje;
 
     int mi_id = 1;
+    int mi_prioridad = 0;
     int mi_ticket = 0;
     int id_nodos[N-1] = {2, 3};
     int id_nodos_pend[N-1];
@@ -31,12 +31,18 @@ typedef struct mensaje {
     int sendMsg();
     mensaje receiveMsg();
 
-int main(){
+int main(int argc, char const *argv[]) {
+
+  mi_id = atoi(argv[1]);
+  mi_prioridad = atoi(argv[2]);
 
   key_t key = ftok("/tmp", 123);
   id_cola = msgget(key, 0777 | IPC_CREAT);
 
   printf("ID de la cola: %i\n", id_cola);
+
+  // Hacer un fork para el proceso receptor
+  // Hacer un fork para el proceso que crea los hijos?
 
   while (quiero) {
 
@@ -76,10 +82,10 @@ int sendMsg(int tipo, int id_destino) {
   if (tipo == REPLY) {
     msg.prioridad = REPLY;
   } else {
-    msg.prioridad = PRIORIDAD;
+    msg.prioridad = mi_prioridad;
   }
   
-  msg.id_nodo = ID_NODO;
+  msg.id_nodo = mi_id;
   msg.mtype = id_destino; // ¿Destinatario?
 
   return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
