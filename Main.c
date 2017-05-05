@@ -4,6 +4,7 @@
 #include <stdio.h> //Prints
 #include <stdlib.h>
 #include <unistd.h> // Fork
+#include <signal.h> // Signals
 
 #define N 3 // Número de nodos
 
@@ -26,39 +27,56 @@ typedef struct mensaje {
     int max_ticket = 0;
 
     int id_cola = 0;
+    int id_cola_ack = 0;
 
 // Prototipos de las funciones
     int sendMsg();
     mensaje receiveMsg();
-
+    mensaje receiveMsgReply();
+    void procesoReceptor();
+    
 int main(int argc, char const *argv[]) {
 
   mi_id = atoi(argv[1]);
   mi_prioridad = atoi(argv[2]);
+  quiero = atoi(argv[3]);
+  mi_ticket = mi_prioridad;
 
   key_t key = ftok("/tmp", 123);
   id_cola = msgget(key, 0777 | IPC_CREAT);
 
+  id_cola_ack = msgget(ftok("/home/", 123), 0777 | IPC_CREAT);
+
   printf("ID de la cola: %i\n", id_cola);
+  printf("ID de la cola ACK: %i\n", id_cola_ack);
 
-  // Hacer un fork para el proceso receptor
-  // Hacer un fork para el proceso que crea los hijos?
+  int pos = 0;
+  for (int i = 1; i < N; i++)
+  {
+   if (i != mi_id) {id_nodos[pos++] = i;}
+ }
 
-  while (quiero) {
+ int pid = fork();
+ if (pid == 0) { while(1) { procesoReceptor(); }}
 
-    for (int i = 0; i < N -1; i++) { sendMsg(REQUEST, id_nodos[i]); }
-    for (int i = 0; i < N -1; i++) { receiveMsg(); }
+ while (1) {
+
+  for (int i = 0; i < N -1; i++) { sendMsg(REQUEST, id_nodos[i]); }
+  for (int i = 0; i < N -1; i++) { receiveMsgReply(); }
 
     // ------ Inicio sección crítica ----------------
-    printf("ENTRO EN LA SECCION CRITICA\n");
+  printf("ENTRO EN LA SECCION CRITICA\n");
     // --------- Fin sección crítica ----------------
-    quiero = 0;
+  quiero = 0;
 
-    for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+  for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
 
-    num_pend = 0;
+      num_pend = 0;
 
-    } // Cierre while 
+    return 0;
+  } // Cierre while 
+
+  kill(pid, SIGSTOP);
 } // Cierre main
 
 void procesoReceptor() {
@@ -70,7 +88,7 @@ void procesoReceptor() {
   ticket_origen = msg.prioridad;
   
   if ((quiero != 1) || (ticket_origen < mi_ticket) || ((ticket_origen == mi_ticket && (id_nodo_origen < mi_id)))) {
-    sendMsg(id_nodo_origen);
+    sendMsg(REPLY, id_nodo_origen);
   } else {
     id_nodos_pend[num_pend++] = id_nodo_origen;
   }
@@ -78,9 +96,11 @@ void procesoReceptor() {
 
 int sendMsg(int tipo, int id_destino) {
   mensaje msg;
+  int cola = id_cola;
 
   if (tipo == REPLY) {
     msg.prioridad = REPLY;
+    cola = id_cola_ack;
   } else {
     msg.prioridad = mi_prioridad;
   }
@@ -88,7 +108,7 @@ int sendMsg(int tipo, int id_destino) {
   msg.id_nodo = mi_id;
   msg.mtype = id_destino; // ¿Destinatario?
 
-  return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
+  return msgsnd (cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
 } // Cierre sendMsg
 
 // receive()
@@ -101,3 +121,15 @@ mensaje receiveMsg() {
 
   return msg;
 } // Cierre receiveMsg()
+
+// receive()
+mensaje receiveMsgReply() {
+
+  mensaje msg;
+  int res = msgrcv (id_cola_ack, (struct msgbuf *)&msg, sizeof(msg), mi_id, 0);
+
+  printf ("Recibo (ACK) desde: %i\n", msg.id_nodo);
+
+  return msg;
+} // Cierre receiveMsg()
+
