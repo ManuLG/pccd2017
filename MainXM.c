@@ -6,6 +6,9 @@
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
 
+// Prototipos de las funciones
+int sendMsg();
+mensaje receiveMsg();
 void *procesoReceptor();
 void crearVector();
 
@@ -20,22 +23,24 @@ typedef struct mensaje {
       int id_nodo;
     } mensaje;
 
-    int mi_id = 1;
-    int mi_prioridad = 0;
-    int mi_ticket = 0;
-    int id_nodos[N-1] = {2, 3};
-    int id_nodos_pend[N-1];
-    int num_pend = 0;
-    int quiero = 1;
-    int sc=0;
-    int max_ticket = 0;
+// Identificadores
+int mi_id = 1;
+int mi_ticket = 0;
+int mi_prioridad = 0;
+int max_ticket = 0;
 
-    int id_cola = 0;
-    int id_cola_ack = 0;
+// Arrays de nodos a tener en cuenta
+int id_nodos[N-1] = {2, 3};
+int id_nodos_pend[N-1];
+int num_pend = 0;
+// Variables para serializar
+int quiero = 1;
+int sc=0;
+// Colas de mesajes
+int id_cola = 0;
+int id_cola_ack = 0;
 
-// Prototipos de las funciones
-    int sendMsg();
-    mensaje receiveMsg();
+
 
 int main(int argc, char const *argv[]) {
 
@@ -53,8 +58,6 @@ int main(int argc, char const *argv[]) {
 
   // Hacer un thread para el proceso receptor
   pthread_create(&hiloR,NULL,procesoReceptor,"");
-
-
 
   // Hacer un thread para el proceso que crea los hijos?
 
@@ -91,11 +94,13 @@ void *procesoReceptor()
     ticket_origen = msg.prioridad;
     mi_ticket = mi_prioridad;
 
-    if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) ) 
+    if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) )
     {
       printf("procesoReceptor\n" );
       sendMsg(REPLY,id_nodo_origen);
-    } else {
+    }
+    else
+    {
       printf("Añadido pendiente\n" );
       id_nodos_pend[num_pend++] = id_nodo_origen;
     }
@@ -114,6 +119,7 @@ int sendMsg(int tipo, int id_destino) {
     msg.prioridad = REPLY;
     return msgsnd (id_cola_ack, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
   }
+
   printf("Sending request\n");
   msg.prioridad = mi_prioridad;
 
@@ -138,7 +144,7 @@ void crearVector()
   {
     printf("mi id: %i    valor i: %i   valo j: %i\nM",mi_id,i,j);
     if(i+1!=mi_id)id_nodos[j++]=(i+1);
-    //printf("valor array: %i\n",id_nodos[j-1]);
+    
   }
     printf("valor array: %i  %i \n",id_nodos[0],id_nodos[1]);
 
