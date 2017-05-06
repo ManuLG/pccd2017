@@ -13,10 +13,6 @@ typedef struct mensaje {
       int id_nodo;
     } mensaje;
 
-typedef struct param_hijo {
-      sem_t *semH;
-      sem_t *semP;
-    } param_hijo;
 
 // Prototipos de las funciones
 int sendMsg();
@@ -68,13 +64,11 @@ int main(int argc, char const *argv[]) {
 
 // Adicion mía
   int num_hijos=0;
-  param_hijo *params=malloc(sizeof(param_hijo));
+
 
   sem_init(&semH,0,1);
   sem_init(&semP,0,N);
 
-  params->semH=&semH;
-  params->semP=&semP;
 // Adicion mía
 
   crearVector();
