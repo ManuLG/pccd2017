@@ -46,6 +46,9 @@ int id_cola_ack = 0;
 // semáforos
 sem_t semH;
 sem_t semP;
+// cantidades
+int num_hijos=0;
+int iter=0;
 
 
 
@@ -54,6 +57,8 @@ int main(int argc, char const *argv[]) {
 
   mi_id = atoi(argv[1]);
   mi_prioridad = atoi(argv[2]);
+  num_hijos= atoi(argv[3]);
+  iter=num_hijos;
 
   key_t key = ftok("/tmp", 123);
   key_t key_2 = ftok("/tmp", 1234);
@@ -63,13 +68,19 @@ int main(int argc, char const *argv[]) {
   pthread_t hilosH[255];
 
 // Adicion mía
-  int num_hijos=0;
-
-
   sem_init(&semH,0,1);
-  sem_init(&semP,0,N);
+  sem_init(&semP,0,1);
 
 // Adicion mía
+  if(num_hijos>0)
+    quiero=1;
+
+  sem_wait(&semP);
+  while(iter>0)
+  {
+    pthread_create(&hiloR,NULL,hijo,"");
+    iter--;
+  }
 
   crearVector();
   printf("ID de la cola: %i\n", id_cola);
@@ -80,15 +91,6 @@ int main(int argc, char const *argv[]) {
   // Hacer un thread para el proceso que crea los hijos?
   while(1)
   {
-    printf("Indique el número de procesos de prioridad %i a crear\n", mi_prioridad);
-    num_hijos=3;
-    getchar();
-
-    if(num_hijos<0)
-      printf("Por favor, indique un número válido");
-    else
-      quiero=1;
-
     while (quiero)
     {
 
@@ -100,13 +102,7 @@ int main(int argc, char const *argv[]) {
 
       // ------ Inicio sección crítica ----------------
       printf("ENTRO EN LA SECCION CRITICA\n");
-      while(num_hijos>0)
-      {
-        pthread_create(&hiloR,NULL,hijo,"");
-        num_hijos--;
-      }
-
-
+      for(int i=0;i<num_hijos;i++)sem_post(&semP);
       // --------- Fin sección crítica ----------------
 
       sc=0;
@@ -143,7 +139,11 @@ void *procesoReceptor()
     {
       printf("Añadido pendiente\n" );
       if(ticket_origen < mi_ticket && sc==1)
+      {
         stop=1;
+        printf("Recibí petición con más prioridad\n");
+      }
+
       id_nodos_pend[num_pend++] = id_nodo_origen;
     }
   }
@@ -217,6 +217,7 @@ void *hijo (void *arg) {
   }
 
   // Esperamos a que el padre nos de permiso (Inicio S.C)
+  sem_wait(&semP);
   sem_wait(&semH);
 
   // Imprimimos mensaje de S.C.
@@ -238,8 +239,8 @@ void *hijo (void *arg) {
   }
 
   // Devolvemos el control al padre (Fin S.C.)
-  getchar();
-  sem_post(&semH);
+  //getchar();
+
 
   // Mensaje de despedida
   switch (tipo) {
@@ -258,5 +259,6 @@ void *hijo (void *arg) {
              break;
 
   }
+  sem_post(&semH);
   pthread_exit(NULL);
 }
