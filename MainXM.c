@@ -6,7 +6,6 @@
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
 #include <semaphore.h>
-
 typedef struct mensaje {
       long      mtype;    // Necesario para filtrar el mensaje a recibir
       int prioridad;
@@ -46,6 +45,8 @@ int id_cola_ack = 0;
 // semáforos
 sem_t semH;
 sem_t semP;
+
+sem_t sem_prot_quiero, sem_prot_sc;
 // cantidades
 int num_hijos=0;
 int iter=0;
@@ -68,14 +69,16 @@ int main(int argc, char const *argv[]) {
   pthread_t hilosH[255];
 
 // Adicion mía
-  sem_init(&semH,0,1);
-  sem_init(&semP,0,1);
+  sem_init(&semH,0,0);
+  sem_init(&semP,0,0);
+
+  sem_init(&sem_prot_quiero, 0, 1);
+  sem_init(&sem_prot_sc, 0, 1);
 
 // Adicion mía
   if(num_hijos>0)
     quiero=1;
 
-  sem_wait(&semP);
   while(iter>0)
   {
     pthread_create(&hiloR,NULL,hijo,"");
@@ -91,28 +94,43 @@ int main(int argc, char const *argv[]) {
   // Hacer un thread para el proceso que crea los hijos?
   while(1)
   {
-    while (quiero)
-    {
 
-      for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
-      for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
-      if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
+    sem_wait(&sem_prot_quiero);
+    quiero = 1;
+    sem_post(&sem_prot_quiero);
 
-      sc=1;
+    for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
+    for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
 
-      // ------ Inicio sección crítica ----------------
-      printf("ENTRO EN LA SECCION CRITICA\n");
-      for(int i=0;i<num_hijos;i++)sem_post(&semP);
-      // --------- Fin sección crítica ----------------
+    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
 
-      sc=0;
-      quiero = 0;
-      printf("num_pend: %i\n",num_pend );
-      for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+    sem_wait(&sem_prot_sc);
+    sc=1;
+    sem_post(&sem_prot_sc);
 
-      num_pend = 0;
+    // ------ Inicio sección crítica ----------------
+    printf("ENTRO EN LA SECCION CRITICA\n");
+    for(int i = 0;i < num_hijos;i++) {
+      sem_post(&semH);
+      sem_wait(&semP);
+    }
+    // --------- Fin sección crítica ----------------
 
-    } // Cierre while de quiero
+    sem_wait(&sem_prot_sc);
+    sc=0;
+    sem_post(&sem_prot_sc);
+
+    sem_wait(&sem_prot_quiero);
+    quiero = 0;
+    sem_post(&sem_prot_quiero);
+
+
+    printf("num_pend: %i\n",num_pend );
+    for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+
+    num_pend = 0;
+
+  return 0;
 
   } //Cierre while de proceso padre permanente
 
@@ -217,7 +235,7 @@ void *hijo (void *arg) {
   }
 
   // Esperamos a que el padre nos de permiso (Inicio S.C)
-  sem_wait(&semP);
+
   sem_wait(&semH);
 
   // Imprimimos mensaje de S.C.
@@ -259,6 +277,6 @@ void *hijo (void *arg) {
              break;
 
   }
-  sem_post(&semH);
+  sem_post(&semP);
   pthread_exit(NULL);
 }
