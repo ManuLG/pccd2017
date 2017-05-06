@@ -49,9 +49,6 @@ sem_t semP;
 sem_t sem_prot_quiero, sem_prot_sc;
 // cantidades
 int num_hijos=0;
-int iter=0;
-
-
 
 
 int main(int argc, char const *argv[]) {
@@ -59,7 +56,6 @@ int main(int argc, char const *argv[]) {
   mi_id = atoi(argv[1]);
   mi_prioridad = atoi(argv[2]);
   num_hijos= atoi(argv[3]);
-  iter=num_hijos;
 
   key_t key = ftok("/tmp", 123);
   key_t key_2 = ftok("/tmp", 1234);
@@ -69,8 +65,8 @@ int main(int argc, char const *argv[]) {
   pthread_t hilosH[255];
 
 // Adicion mía
-  sem_init(&semH,0,0);
-  sem_init(&semP,0,0);
+  sem_init(&semH,0,1);
+  sem_init(&semP,0,1);
 
   sem_init(&sem_prot_quiero, 0, 1);
   sem_init(&sem_prot_sc, 0, 1);
