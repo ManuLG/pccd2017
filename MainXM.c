@@ -5,14 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
-
-void *procesoReceptor();
-void crearVector();
-
-#define N 3 // Número de nodos
-
-#define REPLY -1
-#define REQUEST 1
+#include <semaphore.h>
 
 typedef struct mensaje {
       long      mtype;    // Necesario para filtrar el mensaje a recibir
@@ -20,22 +13,42 @@ typedef struct mensaje {
       int id_nodo;
     } mensaje;
 
-    int mi_id = 1;
-    int mi_prioridad = 0;
-    int mi_ticket = 0;
-    int id_nodos[N-1] = {2, 3};
-    int id_nodos_pend[N-1];
-    int num_pend = 0;
-    int quiero = 1;
-    int sc=0;
-    int max_ticket = 0;
-
-    int id_cola = 0;
-    int id_cola_ack = 0;
 
 // Prototipos de las funciones
-    int sendMsg();
-    mensaje receiveMsg();
+int sendMsg();
+mensaje receiveMsg();
+void *procesoReceptor();
+void crearVector();
+void *hijo (void *args);
+
+#define N 3 // Número de nodos
+
+#define REPLY -1
+#define REQUEST 1
+
+// Identificadores
+int mi_id = 1;
+int mi_ticket = 0;
+int mi_prioridad = 0;
+int max_ticket = 0;
+
+// Arrays de nodos a tener en cuenta
+int id_nodos[N-1] = {2, 3};
+int id_nodos_pend[N-1];
+int num_pend = 0;
+// Variables para serializar
+int quiero = 1;
+int sc=0;
+int stop=0;
+// Colas de mesajes
+int id_cola = 0;
+int id_cola_ack = 0;
+// semáforos
+sem_t semH;
+sem_t semP;
+
+
+
 
 int main(int argc, char const *argv[]) {
 
@@ -47,6 +60,16 @@ int main(int argc, char const *argv[]) {
   id_cola = msgget(key, 0777 | IPC_CREAT);
   id_cola_ack = msgget(key_2, 0777 | IPC_CREAT);
   pthread_t hiloR;
+  pthread_t hilosH[255];
+
+// Adicion mía
+  int num_hijos=0;
+
+
+  sem_init(&semH,0,1);
+  sem_init(&semP,0,N);
+
+// Adicion mía
 
   crearVector();
   printf("ID de la cola: %i\n", id_cola);
@@ -54,29 +77,49 @@ int main(int argc, char const *argv[]) {
   // Hacer un thread para el proceso receptor
   pthread_create(&hiloR,NULL,procesoReceptor,"");
 
-
-
   // Hacer un thread para el proceso que crea los hijos?
+  while(1)
+  {
+    printf("Indique el número de procesos de prioridad %i a crear\n", mi_prioridad);
+    num_hijos=3;
+    getchar();
 
-  while (quiero) {
+    if(num_hijos<0)
+      printf("Por favor, indique un número válido");
+    else
+      quiero=1;
 
-    for (int i = 0; i < N -1; i++) { sendMsg(REQUEST, id_nodos[i]); }
-    for (int i = 0; i < N -1; i++) { receiveMsg(id_cola_ack); }
-    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
+    while (quiero)
+    {
+
+      for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
+      for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
+      if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
 
       sc=1;
-    // ------ Inicio sección crítica ----------------
-    printf("ENTRO EN LA SECCION CRITICA\n");
-    getchar();
-    // --------- Fin sección crítica ----------------
-    sc=0;
-    quiero = 0;
-    printf("num_pend: %i\n",num_pend );
-    for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
 
-    num_pend = 0;
+      // ------ Inicio sección crítica ----------------
+      printf("ENTRO EN LA SECCION CRITICA\n");
+      while(num_hijos>0)
+      {
+        pthread_create(&hiloR,NULL,hijo,"");
+        num_hijos--;
+      }
 
-    } // Cierre while
+
+      // --------- Fin sección crítica ----------------
+
+      sc=0;
+      quiero = 0;
+      printf("num_pend: %i\n",num_pend );
+      for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+
+      num_pend = 0;
+
+    } // Cierre while de quiero
+
+  } //Cierre while de proceso padre permanente
+
 } // Cierre main
 
 void *procesoReceptor()
@@ -91,12 +134,16 @@ void *procesoReceptor()
     ticket_origen = msg.prioridad;
     mi_ticket = mi_prioridad;
 
-    if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) ) 
+    if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) )
     {
       printf("procesoReceptor\n" );
       sendMsg(REPLY,id_nodo_origen);
-    } else {
+    }
+    else
+    {
       printf("Añadido pendiente\n" );
+      if(ticket_origen < mi_ticket && sc==1)
+        stop=1;
       id_nodos_pend[num_pend++] = id_nodo_origen;
     }
   }
@@ -114,6 +161,7 @@ int sendMsg(int tipo, int id_destino) {
     msg.prioridad = REPLY;
     return msgsnd (id_cola_ack, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
   }
+
   printf("Sending request\n");
   msg.prioridad = mi_prioridad;
 
@@ -138,8 +186,77 @@ void crearVector()
   {
     printf("mi id: %i    valor i: %i   valo j: %i\nM",mi_id,i,j);
     if(i+1!=mi_id)id_nodos[j++]=(i+1);
-    //printf("valor array: %i\n",id_nodos[j-1]);
+
   }
     printf("valor array: %i  %i \n",id_nodos[0],id_nodos[1]);
 
+}
+
+void *hijo (void *arg) {
+
+  // Cogemos los parámetros de entrada
+  int tipo = mi_prioridad;
+
+
+  // Mensaje de bienvenida
+  switch (tipo) {
+
+    case 1:  printf("Soy un proceso de pagos, y acabo de ser creado.\n");
+             break;
+    case 2:  printf("Soy un proceso de anulaciones, y acabo de ser creado.\n");
+             break;
+    case 3:  printf("Soy un proceso de pre-reservas, y acabo de ser creado.\n");
+             break;
+    case 4:  printf("Soy un proceso de gradas, y acabo de ser creado.\n");
+             break;
+    case 5:  printf("Soy un proceso de eventos, y acabo de ser creado.\n");
+             break;
+    default: printf("Soy un proceso desconocido ...\n");
+             break;
+
+  }
+
+  // Esperamos a que el padre nos de permiso (Inicio S.C)
+  sem_wait(&semH);
+
+  // Imprimimos mensaje de S.C.
+  switch (tipo) {
+
+    case 1:  printf("Soy un proceso de pagos, y estoy en mi sección crítica.\n");
+             break;
+    case 2:  printf("Soy un proceso de anulaciones, y estoy en mi sección crítica.\n");
+             break;
+    case 3:  printf("Soy un proceso de pre-reservas, y estoy en mi sección crítica.\n");
+             break;
+    case 4:  printf("Soy un proceso de gradas, y estoy en mi sección crítica.\n");
+             break;
+    case 5:  printf("Soy un proceso de eventos, y estoy en mi sección crítica.\n");
+             break;
+    default: printf("Soy un proceso desconocido ...\n");
+             break;
+
+  }
+
+  // Devolvemos el control al padre (Fin S.C.)
+  getchar();
+  sem_post(&semH);
+
+  // Mensaje de despedida
+  switch (tipo) {
+
+    case 1:  printf("Soy un proceso de pagos, y parece que ya acabé de hacer cosas.\n");
+             break;
+    case 2:  printf("Soy un proceso de anulaciones, y parece que ya acabé de hacer cosas.\n");
+             break;
+    case 3:  printf("Soy un proceso de pre-reservas, y parece que ya acabé de hacer cosas.\n");
+             break;
+    case 4:  printf("Soy un proceso de gradas, y parece que ya acabé de hacer cosas.\n");
+             break;
+    case 5:  printf("Soy un proceso de eventos, y parece que ya acabé de hacer cosas.\n");
+             break;
+    default: printf("Soy un proceso desconocido ...\n");
+             break;
+
+  }
+  pthread_exit(NULL);
 }
