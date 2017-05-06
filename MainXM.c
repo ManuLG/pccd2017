@@ -1,7 +1,7 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
-#include <stdio.h> //Prints
+#include <stdio.h> //Prints, getChar
 #include <stdlib.h>
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
@@ -36,7 +36,7 @@ int id_nodos[N-1] = {2, 3};
 int id_nodos_pend[N-1];
 int num_pend = 0;
 // Variables para serializar
-int quiero = 1;
+int quiero = 0;
 int sc=0;
 int stop=0;
 // Colas de mesajes
@@ -46,10 +46,13 @@ int id_cola_ack = 0;
 sem_t semH;
 sem_t semP;
 
-sem_t sem_prot_quiero, sem_prot_sc;
+sem_t sem_prot_quiero, sem_prot_sc, sem_prot_stop;
 // cantidades
 int num_hijos=0;
 int cont = 0; // Contador de hijos atendidos
+int first = 1;
+
+int nodo_prioritario = 0;
 
 
 int main(int argc, char const *argv[]) {
@@ -63,7 +66,7 @@ int main(int argc, char const *argv[]) {
   id_cola = msgget(key, 0777 | IPC_CREAT);
   id_cola_ack = msgget(key_2, 0777 | IPC_CREAT);
   pthread_t hiloR;
-  pthread_t hilosH[255];
+  pthread_t hilosH[2000];
 
 // Adicion mía
   sem_init(&semH,0,0);
@@ -71,14 +74,7 @@ int main(int argc, char const *argv[]) {
 
   sem_init(&sem_prot_quiero, 0, 1);
   sem_init(&sem_prot_sc, 0, 1);
-
-// Adicion mía
-  if(num_hijos>0)
-    quiero=1;
-
-  for(int i=0;i<num_hijos;i++)
-    pthread_create(&hilosH[i],NULL,hijo,"");
-
+  sem_init(&sem_prot_stop, 0, 1);
 
   crearVector();
   printf("ID de la cola: %i\n", id_cola);
@@ -86,9 +82,23 @@ int main(int argc, char const *argv[]) {
   // Hacer un thread para el proceso receptor
   pthread_create(&hiloR,NULL,procesoReceptor,"");
 
+      for(int i=0;i<num_hijos;i++)
+        pthread_create(&hilosH[i],NULL,hijo,"");
   // Hacer un thread para el proceso que crea los hijos?
   while(1)
   {
+
+    sem_wait(&sem_prot_quiero);
+    if (!quiero && !first) {
+      getchar();
+
+      for(int i=0;i<num_hijos;i++)
+        pthread_create(&hilosH[i],NULL,hijo,"");
+    } else {
+      first = 0;
+    }
+
+    sem_post(&sem_prot_quiero);
 
     sem_wait(&sem_prot_quiero);
     quiero = 1;
@@ -110,13 +120,18 @@ int main(int argc, char const *argv[]) {
       cont++;
       sem_wait(&semP);
 
+      sem_wait(&sem_prot_stop);
       if (stop == 1) {
+        sem_post(&sem_prot_stop);
         num_hijos -= cont;
+        printf("STOOOOOOOOOOP\n\n");
+        sendMsg(REPLY, nodo_prioritario);
         break;
       }
+      sem_post(&sem_prot_stop);
     }
 
-    if (stop == 1) { continue;};
+    if (stop == 1) { first = 1; stop = 0; continue;};
       // --------- Fin sección crítica ----------------
 
     sem_wait(&sem_prot_sc);
@@ -133,7 +148,7 @@ int main(int argc, char const *argv[]) {
 
     num_pend = 0;
 
-  return 0;
+  //return 0;
 
   } //Cierre while de proceso padre permanente
 
@@ -162,7 +177,8 @@ void *procesoReceptor()
       if(ticket_origen < mi_ticket && sc==1)
       {
         stop=1;
-        printf("Recibí petición con más prioridad\n");
+        printf("Recibí petición con más prioridad desde %i\n", id_nodo_origen);
+        nodo_prioritario = id_nodo_origen;
       }
 
       id_nodos_pend[num_pend++] = id_nodo_origen;
