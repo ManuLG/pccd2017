@@ -6,7 +6,6 @@
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
 #include <semaphore.h>
-
 typedef struct mensaje {
       long      mtype;    // Necesario para filtrar el mensaje a recibir
       int prioridad;
@@ -46,6 +45,8 @@ int id_cola_ack = 0;
 // semáforos
 sem_t semH;
 sem_t semP;
+
+sem_t sem_prot_quiero, sem_prot_sc;
 // cantidades
 int num_hijos=0;
 int iter=0;
@@ -68,8 +69,11 @@ int main(int argc, char const *argv[]) {
   pthread_t hilosH[255];
 
 // Adicion mía
-  sem_init(&semH,0,1);
-  sem_init(&semP,0,1);
+  sem_init(&semH,0,0);
+  sem_init(&semP,0,0);
+
+  sem_init(&sem_prot_quiero, 0, 1);
+  sem_init(&sem_prot_sc, 0, 1);
 
 // Adicion mía
   if(num_hijos>0)
@@ -78,6 +82,7 @@ int main(int argc, char const *argv[]) {
   sem_wait(&semP); // Bloqueamos a los hijos
   for(int i=0;i<num_hijos;i++)
     pthread_create(&hilosH[i],NULL,hijo,"");
+
 
   crearVector();
   printf("ID de la cola: %i\n", id_cola);
@@ -88,29 +93,41 @@ int main(int argc, char const *argv[]) {
   // Hacer un thread para el proceso que crea los hijos?
   while(1)
   {
-    while (quiero)
-    {
 
-      for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
-      for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
-      if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
+    sem_wait(&sem_prot_quiero);
+    quiero = 1;
+    sem_post(&sem_prot_quiero);
 
-      sc=1;
+    for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
+    for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
 
+    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
+
+  
+     sem_wait(&sem_prot_sc);
+    sc=1;
+    sem_post(&sem_prot_sc);
       // ------ Inicio sección crítica ----------------
       printf("ENTRO EN LA SECCION CRITICA\n");
       for(int i=0;i<num_hijos;i++)sem_post(&semP); //Subimos el contador interno del semáforo para que pasen todos
       for(int i=0;i<num_hijos;i++)pthread_join(hilosH[i],NULL); //Esperamos hasta nuestro último hijo
       // --------- Fin sección crítica ----------------
 
-      sc=0;
-      quiero = 0;
-      printf("num_pend: %i\n",num_pend );
-      for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+    sem_wait(&sem_prot_sc);
+    sc=0;
+    sem_post(&sem_prot_sc);
 
-      num_pend = 0;
+    sem_wait(&sem_prot_quiero);
+    quiero = 0;
+    sem_post(&sem_prot_quiero);
 
-    } // Cierre while de quiero
+
+    printf("num_pend: %i\n",num_pend );
+    for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
+
+    num_pend = 0;
+
+  return 0;
 
   } //Cierre while de proceso padre permanente
 
@@ -257,7 +274,9 @@ void *hijo (void *arg) {
              break;
 
   }
+
   if(mi_prioridad!=4 && mi_prioridad!=5)
     sem_post(&semH);
+
   pthread_exit(NULL);
 }

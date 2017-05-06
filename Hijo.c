@@ -53,6 +53,8 @@ int main (int argc, char *argv[]) {
              break;
 
   }
+  
+  getchar(); // Simulamos hacer cosas en la sección crítica ...
 
   // Devolvemos el control al padre (Fin S.C.)
   sem_post(semP);
