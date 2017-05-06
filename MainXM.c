@@ -49,6 +49,7 @@ sem_t semP;
 sem_t sem_prot_quiero, sem_prot_sc;
 // cantidades
 int num_hijos=0;
+int cont = 0; // Contador de hijos atendidos
 
 
 int main(int argc, char const *argv[]) {
@@ -65,8 +66,8 @@ int main(int argc, char const *argv[]) {
   pthread_t hilosH[255];
 
 // Adicion mía
-  sem_init(&semH,0,1);
-  sem_init(&semP,0,1);
+  sem_init(&semH,0,0);
+  sem_init(&semP,0,0);
 
   sem_init(&sem_prot_quiero, 0, 1);
   sem_init(&sem_prot_sc, 0, 1);
@@ -75,7 +76,6 @@ int main(int argc, char const *argv[]) {
   if(num_hijos>0)
     quiero=1;
 
-  sem_wait(&semP); // Bloqueamos a los hijos
   for(int i=0;i<num_hijos;i++)
     pthread_create(&hilosH[i],NULL,hijo,"");
 
@@ -105,8 +105,18 @@ int main(int argc, char const *argv[]) {
     sem_post(&sem_prot_sc);
       // ------ Inicio sección crítica ----------------
       printf("ENTRO EN LA SECCION CRITICA\n");
-      for(int i=0;i<num_hijos;i++)sem_post(&semP); //Subimos el contador interno del semáforo para que pasen todos
-      for(int i=0;i<num_hijos;i++)pthread_join(hilosH[i],NULL); //Esperamos hasta nuestro último hijo
+    for(int i = 0;i < num_hijos;i++) {
+      sem_post(&semH);
+      cont++;
+      sem_wait(&semP);
+
+      if (stop == 1) {
+        num_hijos -= cont;
+        break;
+      }
+    }
+
+    if (stop == 1) { continue;};
       // --------- Fin sección crítica ----------------
 
     sem_wait(&sem_prot_sc);
@@ -228,9 +238,7 @@ void *hijo (void *arg) {
   }
 
   // Esperamos a que el padre nos de permiso (Inicio S.C)
-  sem_wait(&semP);
-  if(mi_prioridad!=4 && mi_prioridad!=5)
-    sem_wait(&semH);
+  sem_wait(&semH);
 
   // Imprimimos mensaje de S.C.
   switch (tipo) {
@@ -271,8 +279,7 @@ void *hijo (void *arg) {
 
   }
 
-  if(mi_prioridad!=4 && mi_prioridad!=5)
-    sem_post(&semH);
+  sem_post(&semP);
 
   pthread_exit(NULL);
 }
