@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
+#include <semaphore.h>
 
 void *procesoReceptor();
 void crearVector();
@@ -33,6 +34,8 @@ typedef struct mensaje {
     int id_cola = 0;
     int id_cola_ack = 0;
 
+    sem_t sem_prot_quiero, sem_prot_sc;
+
 // Prototipos de las funciones
     int sendMsg();
     mensaje receiveMsg();
@@ -41,6 +44,10 @@ int main(int argc, char const *argv[]) {
 
   mi_id = atoi(argv[1]);
   mi_prioridad = atoi(argv[2]);
+  quiero = atoi(argv[3]);
+
+  sem_init(&sem_prot_quiero, 0, 1);
+  sem_init(&sem_prot_sc, 0, 1);
 
   key_t key = ftok("/tmp", 123);
   key_t key_2 = ftok("/tmp", 1234);
@@ -54,28 +61,39 @@ int main(int argc, char const *argv[]) {
   // Hacer un thread para el proceso receptor
   pthread_create(&hiloR,NULL,procesoReceptor,"");
 
-
-
   // Hacer un thread para el proceso que crea los hijos?
 
   while (quiero) {
+
+    sem_wait(&sem_prot_quiero);
+    quiero = 1;
+    sem_post(&sem_prot_quiero);
 
     for (int i = 0; i < N -1; i++) { sendMsg(REQUEST, id_nodos[i]); }
     for (int i = 0; i < N -1; i++) { receiveMsg(id_cola_ack); }
     if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
 
-      sc=1;
+    sem_wait(&sem_prot_sc);
+    sc=1;
+    sem_post(&sem_prot_sc);
+
     // ------ Inicio sección crítica ----------------
     printf("ENTRO EN LA SECCION CRITICA\n");
     getchar();
     // --------- Fin sección crítica ----------------
+
+    sem_wait(&sem_prot_sc);
     sc=0;
+    sem_post(&sem_prot_sc);
+
+    sem_wait(&sem_prot_quiero);
     quiero = 0;
+    sem_post(&sem_prot_quiero);
+
     printf("num_pend: %i\n",num_pend );
     for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
 
     num_pend = 0;
-
     } // Cierre while
 } // Cierre main
 
@@ -91,6 +109,8 @@ void *procesoReceptor()
     ticket_origen = msg.prioridad;
     mi_ticket = mi_prioridad;
 
+    sem_wait(&sem_prot_sc);
+    sem_wait(&sem_prot_quiero);
     if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) ) 
     {
       printf("procesoReceptor\n" );
@@ -99,6 +119,9 @@ void *procesoReceptor()
       printf("Añadido pendiente\n" );
       id_nodos_pend[num_pend++] = id_nodo_origen;
     }
+
+    sem_post(&sem_prot_sc);
+    sem_post(&sem_prot_quiero);
   }
   pthread_exit(NULL);
 } // Cierre procesoReceptor()
