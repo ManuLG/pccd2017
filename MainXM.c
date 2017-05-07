@@ -6,6 +6,7 @@
 #include <unistd.h> // Fork
 #include <pthread.h> //threads
 #include <semaphore.h>
+#include <string.h> //strcopy
 typedef struct mensaje {
       long      mtype;    // Necesario para filtrar el mensaje a recibir
       int prioridad;
@@ -225,69 +226,31 @@ void crearVector() {
 
 void *hijo (void *arg) {
 
-  // Cogemos los parámetros de entrada
-  int tipo = mi_prioridad;
-
+  char nombre[30];
 
   // Mensaje de bienvenida
-  switch (tipo) {
-
-    case 1:  printf("Soy un proceso de pagos, y acabo de ser creado.\n");
-             break;
-    case 2:  printf("Soy un proceso de anulaciones, y acabo de ser creado.\n");
-             break;
-    case 3:  printf("Soy un proceso de pre-reservas, y acabo de ser creado.\n");
-             break;
-    case 4:  printf("Soy un proceso de gradas, y acabo de ser creado.\n");
-             break;
-    case 5:  printf("Soy un proceso de eventos, y acabo de ser creado.\n");
-             break;
-    default: printf("Soy un proceso desconocido ...\n");
-             break;
-
+  switch (mi_prioridad) {
+    case 1:  strcpy(nombre, "pagos"); break;
+    case 2:  strcpy(nombre, "anulaciones"); break;
+    case 3:  strcpy(nombre, "pre-reservas"); break;
+    case 4:  strcpy(nombre, "gradas"); break;
+    case 5:  strcpy(nombre, "eventos"); break;
+    default: strcpy(nombre, "nombre desconocido"); break;
   }
+
+  printf("Soy un proceso de %s.\n", nombre);
 
   // Esperamos a que el padre nos de permiso (Inicio S.C)
   sem_wait(&sem_paso_hijo);
 
   // Imprimimos mensaje de S.C.
-  switch (tipo) {
-
-    case 1:  printf("Soy un proceso de pagos, y estoy en mi sección crítica.\n");
-             break;
-    case 2:  printf("Soy un proceso de anulaciones, y estoy en mi sección crítica.\n");
-             break;
-    case 3:  printf("Soy un proceso de pre-reservas, y estoy en mi sección crítica.\n");
-             break;
-    case 4:  printf("Soy un proceso de gradas, y estoy en mi sección crítica.\n");
-             break;
-    case 5:  printf("Soy un proceso de eventos, y estoy en mi sección crítica.\n");
-             break;
-    default: printf("Soy un proceso desconocido ...\n");
-             break;
-
-  }
+  printf("Soy un proceso de %s, y estoy en mi sección crítica.\n", nombre);
 
   // Devolvemos el control al padre (Fin S.C.)
   getchar();
 
   // Mensaje de despedida
-  switch (tipo) {
-
-    case 1:  printf("Soy un proceso de pagos, y salgo de mi sección crítica.\n");
-             break;
-    case 2:  printf("Soy un proceso de anulaciones, y salgo de mi sección crítica.\n");
-             break;
-    case 3:  printf("Soy un proceso de pre-reservas, y salgo de mi sección crítica.\n");
-             break;
-    case 4:  printf("Soy un proceso de gradas, y salgo de mi sección crítica.\n");
-             break;
-    case 5:  printf("Soy un proceso de eventos, y salgo de mi sección crítica.\n");
-             break;
-    default: printf("Soy un proceso desconocido ...\n");
-             break;
-
-  }
+  printf("Soy un proceso de %s, y salgo mi sección crítica.\n", nombre);
 
   sem_post(&sem_paso_padre);
 
