@@ -52,6 +52,7 @@ sem_t sem_prot_quiero, sem_prot_sc, sem_prot_stop;
 
 // cantidades
 int num_hijos = 0;
+int num_hijos_restantes = 0;
 int cont = 0; // Contador de hijos atendidos
 int first = 1;
 
@@ -64,14 +65,15 @@ int main(int argc, char const *argv[]) {
   mi_prioridad = atoi(argv[2]);
   num_hijos= atoi(argv[3]);
 
-  key_t key = ftok("/tmp", 123);
-  key_t key_2 = ftok("/tmp", 1234);
-  id_cola = msgget(key, 0777 | IPC_CREAT);
-  id_cola_ack = msgget(key_2, 0777 | IPC_CREAT);
-  pthread_t hiloR;
-  pthread_t hilosH[2000];
+  pthread_t hiloR, hilosH[2000];
 
+  id_cola = msgget(ftok("/tmp", 123), 0777 | IPC_CREAT);
+  id_cola_ack = msgget(ftok("/tmp", 1234), 0777 | IPC_CREAT);
 
+  printf("ID de la cola de peticiones: %i\n", id_cola);
+  printf("ID de la cola de respuestas: %i\n", id_cola_ack);
+
+  // Inicialización de los semáforos
   sem_init(&sem_paso_hijo,0,0);
   sem_init(&sem_paso_padre,0,0);
 
@@ -79,19 +81,19 @@ int main(int argc, char const *argv[]) {
   sem_init(&sem_prot_sc, 0, 1);
   sem_init(&sem_prot_stop, 0, 1);
 
+  // Creamos el vector que contiene los IDs de los nodos vecinos
   crearVector();
-  printf("ID de la cola de peticiones: %i\n", id_cola);
-  printf("ID de la cola de respuestas: %i\n", id_cola_ack);
+
 
   // Hacer un thread para el proceso receptor
   pthread_create(&hiloR,NULL,procesoReceptor,"");
 
-  for(int i = 0;i < num_hijos; i++)
-    pthread_create(&hilosH[i],NULL,hijo,"");
+  // Creamos los hijos en un hilo cada uno
+  for(int i = 0;i < num_hijos; i++) { pthread_create(&hilosH[i],NULL,hijo,""); };
 
-  while(1)
-  {
+  while(1) {
 
+    // Si no es la primera vez espera aquí hasta que pulsemos una tecla. En ese momento generará nuevos hijos
     sem_wait(&sem_prot_quiero);
     if (!quiero && !first) {
       sem_post(&sem_prot_quiero);
@@ -99,6 +101,7 @@ int main(int argc, char const *argv[]) {
 
       for(int i = 0;i < num_hijos;i++)
         pthread_create(&hilosH[i],NULL,hijo,"");
+
     } else {
       sem_post(&sem_prot_quiero);
       first = 0;
@@ -112,34 +115,37 @@ int main(int argc, char const *argv[]) {
     for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
     for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
 
-    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)
-    {
-      sendMsg(REPLY, id_nodos_pend[i]);
-      num_pend = 0;
+     // Si soy un lector (prioridad igual a 4 o 5) todos los nodos que tenga como pendientes van a ser lectores también, por lo que les doy paso.
+    if(mi_prioridad == 4 || mi_prioridad == 5) {
+      for (int i = 0; i < num_pend; i++) {
+          sendMsg(REPLY, id_nodos_pend[i]);
+          num_pend = 0;
+      }
     }
-    
+
     sem_wait(&sem_prot_sc);
     sc = 1;
     sem_post(&sem_prot_sc);
-      // ------ Inicio sección crítica ----------------
+    // ------ Inicio sección crítica ----------------
 
     printf("Gano la exclusión mutua\n");
-    for(int i = 0;i < num_hijos;i++) {
+    num_hijos_restantes = num_hijos - cont;
+    for(int i = 0;i < num_hijos_restantes;i++) {
       sem_post(&sem_paso_hijo);
       cont++;
-      if(mi_prioridad != 4 && mi_prioridad != 5)sem_wait(&sem_paso_padre);
+      if(mi_prioridad != 4 && mi_prioridad != 5) sem_wait(&sem_paso_padre);
 
       sem_wait(&sem_prot_stop);
       if (stop == 1) {
         sem_post(&sem_prot_stop);
-        num_hijos -= cont;
         printf("Ha llegado una petición más prioritaria y he dejado de dar paso a mis hijos.\n\n");
         sendMsg(REPLY, nodo_prioritario);
-        break;
+        break; // Sale del for
       }
       sem_post(&sem_prot_stop);
     }
 
+    // Si ha llegado alguien más prioritario vuelvo a empezar el bucle de ejecución
     if (stop == 1) { first = 1; stop = 0; continue;};
       // --------- Fin sección crítica ----------------
 
@@ -156,9 +162,9 @@ int main(int argc, char const *argv[]) {
     for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
 
     num_pend = 0;
+    cont = 0;
 
   } //Cierre while(1)
-
 } // Cierre main
 
 void *procesoReceptor()
@@ -172,42 +178,38 @@ void *procesoReceptor()
     id_nodo_origen = msg.id_nodo;
     prioridad_origen = msg.prioridad;
 
-    if (quiero != 1 || (prioridad_origen < mi_prioridad && sc != 1) || (prioridad_origen == mi_prioridad && id_nodo_origen < mi_id && sc != 1) )
-    {
+    if (quiero != 1 || (prioridad_origen < mi_prioridad && sc != 1) || (prioridad_origen == mi_prioridad && id_nodo_origen < mi_id && sc != 1) ) {
       sendMsg(REPLY,id_nodo_origen);
-    }
-    else
-    {
+    } else {
       printf("Añadido nodo a la lista de pendientes\n" );
-      if(prioridad_origen < mi_prioridad && sc==1)
-      {
+      if(prioridad_origen < mi_prioridad && sc==1) {
         stop = 1;
         printf("Recibí petición con más prioridad desde %i\n", id_nodo_origen);
         nodo_prioritario = id_nodo_origen;
+      } else {
+        id_nodos_pend[num_pend++] = id_nodo_origen;
+        printf("%i\n", num_pend);
       }
-
-      id_nodos_pend[num_pend++] = id_nodo_origen;
     }
-  }
+  } // Cierre while(1)
   pthread_exit(NULL);
 } // Cierre procesoReceptor()
 
 int sendMsg(int tipo, int id_destino) {
   mensaje msg;
   msg.id_nodo = mi_id;
-  msg.mtype = id_destino; // ¿Destinatario?
+  msg.mtype = id_destino;
 
-  if (tipo == REPLY)
-  {
+  if (tipo == REPLY) {
     msg.prioridad = REPLY;
     return msgsnd (id_cola_ack, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
+  } else {
+    msg.prioridad = mi_prioridad;
+    return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
   }
-  msg.prioridad = mi_prioridad;
-
-  return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
 } // Cierre sendMsg
 
-// receive()
+
 mensaje receiveMsg(int id_cola) {
 
   mensaje msg;
