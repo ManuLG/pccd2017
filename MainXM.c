@@ -107,10 +107,13 @@ int main(int argc, char const *argv[]) {
     for (int i = 0; i < N -1; i++)  sendMsg(REQUEST, id_nodos[i]);
     for (int i = 0; i < N -1; i++)  receiveMsg(id_cola_ack);
 
-    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)sendMsg(REPLY, id_nodos_pend[i]);
-
-  
-     sem_wait(&sem_prot_sc);
+    if(mi_prioridad == 4 || mi_prioridad == 5) for (int i = 0; i < num_pend; i++)
+    {
+      sendMsg(REPLY, id_nodos_pend[i]);
+      num_pend = 0;
+    }
+    
+    sem_wait(&sem_prot_sc);
     sc=1;
     sem_post(&sem_prot_sc);
       // ------ Inicio sección crítica ----------------
@@ -118,7 +121,7 @@ int main(int argc, char const *argv[]) {
     for(int i = 0;i < num_hijos;i++) {
       sem_post(&semH);
       cont++;
-      sem_wait(&semP);
+      if(mi_prioridad!=4 && mi_prioridad!=5)sem_wait(&semP);
 
       sem_wait(&sem_prot_stop);
       if (stop == 1) {
@@ -275,7 +278,7 @@ void *hijo (void *arg) {
   }
 
   // Devolvemos el control al padre (Fin S.C.)
-  //getchar();
+  getchar();
 
   // Mensaje de despedida
   switch (tipo) {
