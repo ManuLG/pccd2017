@@ -1,3 +1,5 @@
+#!/bin/bash
+
 tmux new-session -s default -n editor -d
 tmux split-window -v -t default
 tmux split-window -h -t default

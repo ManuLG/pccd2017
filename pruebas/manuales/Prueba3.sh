@@ -1,3 +1,5 @@
+#!/bin/bash
+
 tmux new-session -s default -n editor -d
 tmux split-window -h -t default
 tmux send-keys -t default:0.0 C-z "./main 1 1 5 1" Enter
