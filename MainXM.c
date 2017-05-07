@@ -21,7 +21,7 @@ void *procesoReceptor();
 void crearVector();
 void *hijo (void *args);
 
-#define N 3 // Número de nodos
+int N = 3; // Número de nodos
 
 #define REPLY -1
 #define REQUEST 1
@@ -31,8 +31,8 @@ int mi_id = 1;
 int mi_prioridad = 0;
 
 // Arrays de nodos a tener en cuenta
-int id_nodos[N-1] = {2, 3};
-int id_nodos_pend[N-1];
+int *id_nodos;
+int *id_nodos_pend;
 int num_pend = 0;
 
 // Variables para serializar
@@ -62,8 +62,14 @@ int nodo_prioritario = 0;
 int main(int argc, char const *argv[]) {
 
   mi_id = atoi(argv[1]);
-  mi_prioridad = atoi(argv[2]);
-  num_hijos= atoi(argv[3]);
+  N = atoi(argv[2]);
+  mi_prioridad = atoi(argv[3]);
+  num_hijos= atoi(argv[4]);
+
+  int id_nodos_main[N-1];
+  id_nodos = id_nodos_main;
+  int id_nodos_pend_main[N-1];
+  id_nodos_pend = id_nodos_pend_main;
 
   pthread_t hiloR, hilosH[2000];
 
