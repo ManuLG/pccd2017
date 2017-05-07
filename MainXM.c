@@ -90,15 +90,16 @@ int main(int argc, char const *argv[]) {
 
     sem_wait(&sem_prot_quiero);
     if (!quiero && !first) {
+      sem_post(&sem_prot_quiero);
       getchar();
 
       for(int i=0;i<num_hijos;i++)
         pthread_create(&hilosH[i],NULL,hijo,"");
     } else {
+      sem_post(&sem_prot_quiero);
       first = 0;
     }
 
-    sem_post(&sem_prot_quiero);
 
     sem_wait(&sem_prot_quiero);
     quiero = 1;
@@ -117,7 +118,7 @@ int main(int argc, char const *argv[]) {
     sc=1;
     sem_post(&sem_prot_sc);
       // ------ Inicio sección crítica ----------------
-      printf("ENTRO EN LA SECCION CRITICA\n");
+      printf("Gano la exclusión mutua\n");
     for(int i = 0;i < num_hijos;i++) {
       sem_post(&semH);
       cont++;
@@ -127,7 +128,7 @@ int main(int argc, char const *argv[]) {
       if (stop == 1) {
         sem_post(&sem_prot_stop);
         num_hijos -= cont;
-        printf("STOOOOOOOOOOP\n\n");
+        printf("Ha llegado una petición más prioritaria y he dejado de dar paso a mis hijos.\n\n");
         sendMsg(REPLY, nodo_prioritario);
         break;
       }
@@ -146,14 +147,12 @@ int main(int argc, char const *argv[]) {
     sem_post(&sem_prot_quiero);
 
 
-    printf("num_pend: %i\n",num_pend );
+    printf("Número de nodos pendientes: %i\n",num_pend );
     for (int i = 0; i < num_pend; i++) { sendMsg(REPLY, id_nodos_pend[i]); }
 
     num_pend = 0;
 
-  //return 0;
-
-  } //Cierre while de proceso padre permanente
+  } //Cierre while(1)
 
 } // Cierre main
 
@@ -171,12 +170,11 @@ void *procesoReceptor()
 
     if (quiero != 1 || (ticket_origen < mi_ticket && sc!=1) || (ticket_origen == mi_ticket && id_nodo_origen < mi_id && sc!=1) )
     {
-      printf("procesoReceptor\n" );
       sendMsg(REPLY,id_nodo_origen);
     }
     else
     {
-      printf("Añadido pendiente\n" );
+      printf("Añadido nodo a la lista de pendientes\n" );
       if(ticket_origen < mi_ticket && sc==1)
       {
         stop=1;
@@ -197,12 +195,9 @@ int sendMsg(int tipo, int id_destino) {
 
   if (tipo == REPLY)
   {
-    printf("Sending reply\n");
     msg.prioridad = REPLY;
     return msgsnd (id_cola_ack, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
   }
-
-  printf("Sending request\n");
   msg.prioridad = mi_prioridad;
 
   return msgsnd (id_cola, (struct msgbuf *)&msg, sizeof(msg.prioridad)+sizeof(msg.id_nodo)+sizeof(msg.mtype), 0);
@@ -224,12 +219,9 @@ void crearVector()
 
   for(int i=0,j=0; i<N;i++)
   {
-    printf("mi id: %i    valor i: %i   valo j: %i\nM",mi_id,i,j);
     if(i+1!=mi_id)id_nodos[j++]=(i+1);
 
   }
-    printf("valor array: %i  %i \n",id_nodos[0],id_nodos[1]);
-
 }
 
 void *hijo (void *arg) {
