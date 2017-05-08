@@ -7,6 +7,7 @@
 #include <pthread.h> //threads
 #include <semaphore.h>
 #include <string.h> //strcopy
+
 typedef struct mensaje {
       long      mtype;    // Necesario para filtrar el mensaje a recibir
       int prioridad;
@@ -62,10 +63,15 @@ int nodo_prioritario = 0;
 
 int main(int argc, char const *argv[]) {
 
-  mi_id = atoi(argv[1]);
-  N = atoi(argv[2]);
-  mi_prioridad = atoi(argv[3]);
-  num_hijos= atoi(argv[4]);
+  if (argc == 5) {
+    mi_id = atoi(argv[1]);
+    N = atoi(argv[2]);
+    mi_prioridad = atoi(argv[3]);
+    num_hijos= atoi(argv[4]);
+   } else {
+     printf("Aviso: ID Número_de_nodos Prioridad Número_de_hijos.\n");
+     exit(0);
+   }
 
   int id_nodos_main[N-1];
   id_nodos = id_nodos_main;
@@ -102,9 +108,7 @@ int main(int argc, char const *argv[]) {
   while(1) {
 
     // Si no es la primera vez espera aquí hasta que pulsemos una tecla. En ese momento generará nuevos hijos
-    sem_wait(&sem_prot_quiero);
     if (!quiero && !first) {
-      sem_post(&sem_prot_quiero);
       printf("Esperando nuevos hijos.\n");
       getchar();
 
@@ -112,7 +116,6 @@ int main(int argc, char const *argv[]) {
         pthread_create(&hilosH[i],NULL,hijo,"");
 
     } else {
-      sem_post(&sem_prot_quiero);
       first = 0;
     }
 
@@ -195,13 +198,17 @@ void *procesoReceptor()
 
     id_nodo_origen = msg.id_nodo;
     prioridad_origen = msg.prioridad;
-    
+
+    sem_wait(&sem_prot_quiero);
+    sem_wait(&sem_prot_sc);
     if (quiero != 1 || (prioridad_origen < mi_prioridad && sc != 1) || (prioridad_origen == mi_prioridad && id_nodo_origen < mi_id && sc != 1) ) {
       sendMsg(REPLY,id_nodo_origen);
     } else {
       printf("Añadido nodo a la lista de pendientes\n" );
       if(prioridad_origen < mi_prioridad && sc==1) {
+        sem_wait(&sem_prot_stop);
         stop = 1;
+        sem_post(&sem_prot_stop);
         printf("Recibí petición con más prioridad desde %i\n", id_nodo_origen);
         nodo_prioritario = id_nodo_origen;
 
@@ -214,6 +221,9 @@ void *procesoReceptor()
         //printf("%i\n", num_pend);
       }
     }
+
+    sem_post(&sem_prot_quiero);
+    sem_post(&sem_prot_sc);
   } // Cierre while(1)
   pthread_exit(NULL);
 } // Cierre procesoReceptor()
