@@ -47,6 +47,7 @@ int id_cola_ack = 0;
 // semáforos
 sem_t sem_paso_hijo;
 sem_t sem_paso_padre;
+sem_t sem_paso_lectores;
 
 sem_t sem_prot_quiero, sem_prot_sc, sem_prot_stop;
 
@@ -82,6 +83,7 @@ int main(int argc, char const *argv[]) {
   // Inicialización de los semáforos
   sem_init(&sem_paso_hijo,0,0);
   sem_init(&sem_paso_padre,0,0);
+  sem_init(&sem_paso_lectores,0,0);
 
   sem_init(&sem_prot_quiero, 0, 1);
   sem_init(&sem_prot_sc, 0, 1);
@@ -103,6 +105,7 @@ int main(int argc, char const *argv[]) {
     sem_wait(&sem_prot_quiero);
     if (!quiero && !first) {
       sem_post(&sem_prot_quiero);
+      printf("Esperando nuevos hijos.\n");
       getchar();
 
       for(int i = 0;i < num_hijos;i++)
@@ -151,6 +154,15 @@ int main(int argc, char const *argv[]) {
       sem_post(&sem_prot_stop);
     }
 
+    if (mi_prioridad == 4 || mi_prioridad == 5) {
+      for (int i = 0; i < num_hijos; ++i)
+      {
+        printf("Esperando por el lector %i\n", i);
+        sem_wait(&sem_paso_lectores);
+        stop = 0; // No vamos a parar nunca
+      }
+    }
+
     // Si ha llegado alguien más prioritario vuelvo a empezar el bucle de ejecución
     if (stop == 1) { first = 1; stop = 0; continue;};
       // --------- Fin sección crítica ----------------
@@ -183,7 +195,7 @@ void *procesoReceptor()
 
     id_nodo_origen = msg.id_nodo;
     prioridad_origen = msg.prioridad;
-
+    
     if (quiero != 1 || (prioridad_origen < mi_prioridad && sc != 1) || (prioridad_origen == mi_prioridad && id_nodo_origen < mi_id && sc != 1) ) {
       sendMsg(REPLY,id_nodo_origen);
     } else {
@@ -192,9 +204,14 @@ void *procesoReceptor()
         stop = 1;
         printf("Recibí petición con más prioridad desde %i\n", id_nodo_origen);
         nodo_prioritario = id_nodo_origen;
+
+         if (mi_prioridad == 4 || mi_prioridad == 5) {
+          printf("Como soy lector lo añado a la lista de pendientes.\n");
+          id_nodos_pend[num_pend++] = id_nodo_origen;
+         }
       } else {
         id_nodos_pend[num_pend++] = id_nodo_origen;
-        printf("%i\n", num_pend);
+        //printf("%i\n", num_pend);
       }
     }
   } // Cierre while(1)
@@ -261,6 +278,8 @@ void *hijo (void *arg) {
   printf("Soy un proceso de %s, y salgo mi sección crítica.\n", nombre);
 
   sem_post(&sem_paso_padre);
+
+  if (mi_prioridad == 4 || mi_prioridad == 5) { sem_post(&sem_paso_lectores); };
 
   pthread_exit(NULL);
 }
